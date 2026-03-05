@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Slot — ViviTigre</title>
+  <style>
+    :root{
+      --btn:#F05B5B;
+      --btn-dark:#E14A4A;
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background:#fff;
+      min-height:100vh;
+      display:flex;
+      flex-direction:column;
+      background-image: url("./images/SLOT\ TIGRE\ 1.png");
+      background-position: bottom;
+      background-size: contain;
+      background-repeat: no-repeat;
+    }
+
+    .stage{
+      flex:1;
+      display:flex;
+      align-items:flex-end;
+      justify-content:center;
+      padding: 36px 16px 140px;
+    }
+
+    .slots{
+      display:grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: clamp(14px, 2.2vw, 22px);
+      align-items:center;
+      justify-items:center;
+      margin-right: 86px;
+      margin-bottom: 40px;
+    }
+
+    .slot{
+      height: 184px;
+      width: clamp(140px, 6vw, 220px);
+      aspect-ratio: 1 / 1;
+      background: transparent;
+      border: none;
+      overflow:hidden;
+      position:relative;
+    }
+
+    canvas.reel{
+      width: 100%;
+      height: 100%;
+      display:block;
+    }
+
+    #btnSpin{
+      
+    }
+
+    .cta{
+      position: absolute;
+      bottom: 236px;
+      align-self: center;
+      height: 467px;
+      margin-left: 750px;
+      opacity: 0;
+    }
+    .cta:active{ background: var(--btn-dark); }
+    .cta[disabled]{ opacity:.7; cursor:not-allowed; }
+
+    .confetti{
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 9999;
+      opacity: 0;
+      transition: opacity .15s ease;
+    }
+    .confetti.show{ opacity: 1; }
+  </style>
+</head>
+
+<body>
+  <div class="stage">
+    <div class="slots">
+      <div class="slot"><canvas id="c1" class="reel"></canvas></div>
+      <div class="slot"><canvas id="c2" class="reel"></canvas></div>
+      <div class="slot"><canvas id="c3" class="reel"></canvas></div>
+    </div>
+  </div>
+
+  <button class="cta" id="btnSpin" type="button">GIRAR!</button>
+  <canvas id="confetti" class="confetti"></canvas>
+
+<script>
+(() => {
+  const WIN_LEVEL = 2;
+
+  const PRIZES = [
+    { name: "Tigre",    img: "./images/PREMIO1.png" },
+    { name: "Bote",     img: "./images/PREMIO2.png" },
+    { name: "Billetes", img: "./images/PREMIO3.png" },
+    { name: "Botella",  img: "./images/PREMIO4.png" },
+    { name: "Mate",     img: "./images/PREMIO5.png" }
+  ];
+
+  function shouldForceWin(level){
+    const p = [0.00, 0.06, 0.12, 0.20, 0.32, 0.45][level] ?? 0.12;
+    return Math.random() < p;
+  }
+  const randIndex = () => Math.floor(Math.random() * PRIZES.length);
+
+  function loadImage(url){
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.decoding = "async";
+      img.loading = "eager";
+      img.crossOrigin = "anonymous";
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = url;
+    });
+  }
+
+  const canvases = [document.getElementById("c1"), document.getElementById("c2"), document.getElementById("c3")];
+  const btn = document.getElementById("btnSpin");
+
+  function fitCanvas(canvas){
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    const rect = canvas.getBoundingClientRect();
+    canvas.width  = Math.floor(rect.width  * dpr);
+    canvas.height = Math.floor(rect.height * dpr);
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return ctx;
+  }
+
+  class Reel {
+    constructor(canvas, images){
+      this.canvas = canvas;
+      this.ctx = fitCanvas(canvas);
+      this.images = images;
+      this.N = images.length;
+
+      this.w = canvas.getBoundingClientRect().width;
+      this.h = canvas.getBoundingClientRect().height;
+
+      // 🔥 UNA SOLA “CELDA” VISIBLE (tamaño del cuadrado)
+      this.cellH = this.h;
+      // centro = esa celda
+      this.centerIndexOffset = 0;
+
+      this.pos = 0;
+      this.spinning = false;
+      this.stopAt = null;
+
+      this.draw();
+    }
+
+    resize(){
+      this.ctx = fitCanvas(this.canvas);
+      this.w = this.canvas.getBoundingClientRect().width;
+      this.h = this.canvas.getBoundingClientRect().height;
+      this.cellH = this.h; // sigue siendo 1 celda = todo el cuadrado
+      this.draw();
+    }
+
+    spinTo(targetIndex, durationMs){
+      this.spinning = true;
+
+      // vueltas extra (en símbolos)
+      const extraLoops = 18 + Math.floor(Math.random()*10);
+      const startPos = this.pos;
+
+      const currentCenter = (Math.floor(startPos) + this.centerIndexOffset) % this.N;
+      const delta = (targetIndex - currentCenter + this.N) % this.N;
+
+      const endPos = startPos + extraLoops * this.N + delta;
+
+      const now = performance.now();
+      this.stopAt = { startTime: now, endTime: now + durationMs, startPos, endPos, targetIndex };
+
+      return new Promise((resolve) => { this._resolve = resolve; });
+    }
+
+    tick(){
+      if (!this.spinning) return;
+
+      const s = this.stopAt;
+      const now = performance.now();
+      const t = Math.min(1, Math.max(0, (now - s.startTime) / (s.endTime - s.startTime)));
+      const ease = 1 - Math.pow(1 - t, 3);
+
+      this.pos = s.startPos + (s.endPos - s.startPos) * ease;
+
+      if (t >= 1){
+        this.pos = Math.round(this.pos);
+        const centerIdx = (Math.floor(this.pos) + this.centerIndexOffset) % this.N;
+
+        this.spinning = false;
+        this.stopAt = null;
+
+        const resolve = this._resolve;
+        this._resolve = null;
+        if (resolve) resolve(centerIdx);
+      }
+    }
+
+    draw(){
+      const ctx = this.ctx;
+      const w = this.w, h = this.h;
+      ctx.clearRect(0,0,w,h);
+
+      // Dibujamos pocas celdas: la actual + 1 arriba + 1 abajo
+      const cellsToDraw = 3;
+
+      const frac = this.pos - Math.floor(this.pos);
+      const yOffset = frac * this.cellH;
+      const startCell = Math.floor(this.pos) - 1;
+
+      for (let i=0;i<cellsToDraw;i++){
+        const cellIndex = startCell + i;
+        const prizeIndex = ((cellIndex + this.centerIndexOffset) % this.N + this.N) % this.N;
+
+        const y = (i * this.cellH) - yOffset;
+
+        const img = this.images[prizeIndex];
+
+        // ✅ 80% del cuadrado
+        const box = this.cellH * 0.80;
+        const ix = (w - box) / 2;
+        const iy = y + (this.cellH - box) / 2;
+
+        // drawImage “contain” (no achata)
+        const ir = img.width / img.height;
+        let rw = box, rh = box;
+        if (ir >= 1){
+          rh = box / ir;
+        } else {
+          rw = box * ir;
+        }
+        const dx = ix + (box - rw)/2;
+        const dy = iy + (box - rh)/2;
+
+        ctx.save();
+        ctx.shadowColor = "rgba(0,0,0,0.10)";
+        ctx.shadowBlur = 10;
+        ctx.shadowOffsetY = 6;
+        ctx.drawImage(img, dx, dy, rw, rh);
+        ctx.restore();
+      }
+    }
+  }
+
+  function runConfetti(durationMs = 2500){
+    const c = document.getElementById("confetti");
+    const ctx = c.getContext("2d");
+
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    const resize = () => {
+      c.width = Math.floor(window.innerWidth * dpr);
+      c.height = Math.floor(window.innerHeight * dpr);
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+    };
+    resize();
+    c.classList.add("show");
+
+    const colors = ["#7CFFCB", "#A7FFE5", "#C9FF7A", "#F4FF8A", "#8AD6FF"];
+    const pieces = [];
+    const COUNT = 180;
+
+    for (let i=0;i<COUNT;i++){
+      pieces.push({
+        x: Math.random() * window.innerWidth,
+        y: -20 - Math.random() * window.innerHeight * 0.4,
+        w: 6 + Math.random()*10,
+        h: 10 + Math.random()*18,
+        vx: -40 + Math.random()*80,
+        vy: 140 + Math.random()*260,
+        rot: Math.random()*Math.PI,
+        vr: -3 + Math.random()*6,
+        color: colors[(Math.random()*colors.length)|0],
+        alpha: 0.75 + Math.random()*0.25
+      });
+    }
+
+    let start = performance.now();
+    let last = start;
+
+    function tick(now){
+      const dt = Math.min(0.033, (now - last)/1000);
+      last = now;
+      ctx.clearRect(0,0,window.innerWidth, window.innerHeight);
+
+      const gravity = 520;
+      const wind = 10;
+
+      for (const p of pieces){
+        p.vy += gravity * dt;
+        p.vx += wind * dt;
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.rot += p.vr * dt;
+
+        ctx.save();
+        ctx.globalAlpha = p.alpha;
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h);
+        ctx.restore();
+
+        if (p.x < -50) p.x = window.innerWidth + 50;
+        if (p.x > window.innerWidth + 50) p.x = -50;
+      }
+
+      if (now - start < durationMs){
+        requestAnimationFrame(tick);
+      } else {
+        c.classList.remove("show");
+        ctx.clearRect(0,0,window.innerWidth, window.innerHeight);
+      }
+    }
+
+    const onResize = () => resize();
+    window.addEventListener("resize", onResize, { passive:true });
+
+    requestAnimationFrame((t)=>{
+      start = t; last = t;
+      requestAnimationFrame(tick);
+    });
+
+    setTimeout(() => window.removeEventListener("resize", onResize), durationMs + 300);
+  }
+
+  let reels = [];
+  let images = [];
+
+  async function init(){
+    images = await Promise.all(PRIZES.map(p => loadImage(p.img)));
+    reels = canvases.map(c => new Reel(c, images));
+
+    function loop(){
+      for (const r of reels){
+        r.tick();
+        r.draw();
+      }
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+
+    window.addEventListener("resize", () => reels.forEach(r => r.resize()));
+  }
+
+  let spinning = false;
+
+  async function spinAll(){
+    if (spinning) return;
+    spinning = true;
+    btn.disabled = true;
+
+    let i1 = randIndex(), i2 = randIndex(), i3 = randIndex();
+    if (shouldForceWin(WIN_LEVEL)){
+      const w = randIndex();
+      i1 = w; i2 = w; i3 = w;
+    }
+
+    const p1 = reels[0].spinTo(i1, 1700);
+    await sleep(160);
+    const p2 = reels[1].spinTo(i2, 2200);
+    await sleep(160);
+    const p3 = reels[2].spinTo(i3, 2700);
+
+    const r1 = await p1;
+    const r2 = await p2;
+    const r3 = await p3;
+
+    const win = (r1 === r2 && r2 === r3);
+    if (win) runConfetti(2500);
+
+    btn.disabled = false;
+    spinning = false;
+  }
+
+  function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+  btn.addEventListener("click", spinAll);
+
+  init().catch(err => {
+    console.error(err);
+    alert("Error cargando imágenes. Revisá las URLs de PRIZES.");
+  });
+})();
+</script>
+</body>
+</html>
