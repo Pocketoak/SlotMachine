@@ -57,17 +57,13 @@
       display:block;
     }
 
-    #btnSpin{
-      
-    }
-
     .cta{
       position: absolute;
       bottom: 60px;
       align-self: center;
       height: 200px;
-      left: 706px;
       opacity: 0;
+      width: 400px;
     }
     .cta:active{ background: var(--btn-dark); }
     .cta[disabled]{ opacity:.7; cursor:not-allowed; }
@@ -100,6 +96,48 @@
 (() => {
   const WIN_LEVEL = 2;
 
+  // ===== Palanca (fondo) =====
+  const LEVER_FRAMES = 8;
+  const LEVER_PREFIX = "./SLOT-TIGRE-";
+  const LEVER_SUFFIX = ".png";
+
+  function preloadLeverFrames(){
+    for (let i = 1; i <= LEVER_FRAMES; i++){
+      const img = new Image();
+      img.src = `${LEVER_PREFIX}${i}${LEVER_SUFFIX}`;
+    }
+  }
+
+  function playLeverAnimation({ fps = 40, holdLastMs = 50, returnTo1 = true } = {}){
+    const frameMs = 1000 / fps;
+    let frame = 1;
+
+    // arranca en 1
+    document.body.style.backgroundImage = `url("${LEVER_PREFIX}1${LEVER_SUFFIX}")`;
+
+    return new Promise((resolve) => {
+      const interval = setInterval(() => {
+        frame++;
+
+        if (frame > LEVER_FRAMES){
+          clearInterval(interval);
+
+          setTimeout(() => {
+            if (returnTo1){
+              document.body.style.backgroundImage = `url("${LEVER_PREFIX}1${LEVER_SUFFIX}")`;
+            }
+            resolve();
+          }, holdLastMs);
+
+          return;
+        }
+
+        document.body.style.backgroundImage = `url("${LEVER_PREFIX}${frame}${LEVER_SUFFIX}")`;
+      }, frameMs);
+    });
+  }
+
+  // ===== Slot =====
   const PRIZES = [
     { name: "Tigre",    img: "./PREMIO1.png" },
     { name: "Bote",     img: "./PREMIO2.png" },
@@ -126,7 +164,11 @@
     });
   }
 
-  const canvases = [document.getElementById("c1"), document.getElementById("c2"), document.getElementById("c3")];
+  const canvases = [
+    document.getElementById("c1"),
+    document.getElementById("c2"),
+    document.getElementById("c3")
+  ];
   const btn = document.getElementById("btnSpin");
 
   function fitCanvas(canvas){
@@ -149,9 +191,7 @@
       this.w = canvas.getBoundingClientRect().width;
       this.h = canvas.getBoundingClientRect().height;
 
-      // 🔥 UNA SOLA “CELDA” VISIBLE (tamaño del cuadrado)
       this.cellH = this.h;
-      // centro = esa celda
       this.centerIndexOffset = 0;
 
       this.pos = 0;
@@ -165,14 +205,13 @@
       this.ctx = fitCanvas(this.canvas);
       this.w = this.canvas.getBoundingClientRect().width;
       this.h = this.canvas.getBoundingClientRect().height;
-      this.cellH = this.h; // sigue siendo 1 celda = todo el cuadrado
+      this.cellH = this.h;
       this.draw();
     }
 
     spinTo(targetIndex, durationMs){
       this.spinning = true;
 
-      // vueltas extra (en símbolos)
       const extraLoops = 18 + Math.floor(Math.random()*10);
       const startPos = this.pos;
 
@@ -215,7 +254,6 @@
       const w = this.w, h = this.h;
       ctx.clearRect(0,0,w,h);
 
-      // Dibujamos pocas celdas: la actual + 1 arriba + 1 abajo
       const cellsToDraw = 3;
 
       const frac = this.pos - Math.floor(this.pos);
@@ -230,12 +268,10 @@
 
         const img = this.images[prizeIndex];
 
-        // ✅ 80% del cuadrado
         const box = this.cellH * 0.80;
         const ix = (w - box) / 2;
         const iy = y + (this.cellH - box) / 2;
 
-        // drawImage “contain” (no achata)
         const ir = img.width / img.height;
         let rw = box, rh = box;
         if (ir >= 1){
@@ -339,8 +375,11 @@
 
   let reels = [];
   let images = [];
+  let spinning = false;
 
   async function init(){
+    preloadLeverFrames(); // ✅ precarga palanca
+
     images = await Promise.all(PRIZES.map(p => loadImage(p.img)));
     reels = canvases.map(c => new Reel(c, images));
 
@@ -356,12 +395,13 @@
     window.addEventListener("resize", () => reels.forEach(r => r.resize()));
   }
 
-  let spinning = false;
-
   async function spinAll(){
     if (spinning) return;
     spinning = true;
     btn.disabled = true;
+
+    // ✅ palanca (corre en paralelo)
+    playLeverAnimation({ fps: 40, holdLastMs: 50, returnTo1: true });
 
     let i1 = randIndex(), i2 = randIndex(), i3 = randIndex();
     if (shouldForceWin(WIN_LEVEL)){
@@ -396,10 +436,10 @@
   });
 })();
 </script>
+
 </body>
 
 </html>
-
 
 
 
