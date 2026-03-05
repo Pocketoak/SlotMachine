@@ -21,6 +21,7 @@
       background-position: bottom;
       background-size: contain;
       background-repeat: no-repeat;
+      will-change: background-image;
     }
 
     .stage{
@@ -65,8 +66,7 @@
       opacity: 0;
       width: 400px;
     }
-    .cta:active{ background: var(--btn-dark); }
-    .cta[disabled]{ opacity:.7; cursor:not-allowed; }
+    .cta[disabled]{cursor:not-allowed; }
 
     .confetti{
       position: fixed;
@@ -108,34 +108,46 @@
     }
   }
 
-  function playLeverAnimation({ fps = 40, holdLastMs = 50, returnTo1 = true } = {}){
-    const frameMs = 1000 / fps;
-    let frame = 1;
+function playLeverAnimation({ fps = 60, holdLastMs = 50, returnTo1 = true } = {}){
+  const frameMs = 1000 / fps;
+  const totalFrames = LEVER_FRAMES;
 
-    // arranca en 1
-    document.body.style.backgroundImage = `url("${LEVER_PREFIX}1${LEVER_SUFFIX}")`;
+  // arranca en 1
+  document.body.style.backgroundImage = `url("${LEVER_PREFIX}1${LEVER_SUFFIX}")`;
 
-    return new Promise((resolve) => {
-      const interval = setInterval(() => {
-        frame++;
+  return new Promise((resolve) => {
+    let start = performance.now();
+    let lastShown = 1;
 
-        if (frame > LEVER_FRAMES){
-          clearInterval(interval);
+    function step(now){
+      const elapsed = now - start;
 
-          setTimeout(() => {
-            if (returnTo1){
-              document.body.style.backgroundImage = `url("${LEVER_PREFIX}1${LEVER_SUFFIX}")`;
-            }
-            resolve();
-          }, holdLastMs);
+      // frame 1..8 según tiempo
+      const next = Math.min(
+        totalFrames,
+        1 + Math.floor(elapsed / frameMs)
+      );
 
-          return;
-        }
+      if (next !== lastShown){
+        lastShown = next;
+        document.body.style.backgroundImage = `url("${LEVER_PREFIX}${next}${LEVER_SUFFIX}")`;
+      }
 
-        document.body.style.backgroundImage = `url("${LEVER_PREFIX}${frame}${LEVER_SUFFIX}")`;
-      }, frameMs);
-    });
-  }
+      if (next < totalFrames){
+        requestAnimationFrame(step);
+      } else {
+        setTimeout(() => {
+          if (returnTo1){
+            document.body.style.backgroundImage = `url("${LEVER_PREFIX}1${LEVER_SUFFIX}")`;
+          }
+          resolve();
+        }, holdLastMs);
+      }
+    }
+
+    requestAnimationFrame(step);
+  });
+}
 
   // ===== Slot =====
   const PRIZES = [
