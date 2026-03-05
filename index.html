@@ -67,7 +67,42 @@
       width: 400px;
     }
     .cta[disabled]{cursor:not-allowed; }
+/* Botón invisible pero clickeable (sin glow/azul/selección) */
+.cta{
+  position: absolute;
+  bottom: 60px;
+  align-self: center;
+  height: 200px;
+  width: 400px;
+  opacity: 0;
 
+  /* evita selección y highlights */
+  background: transparent;
+  border: 0;
+  outline: none;
+
+  -webkit-tap-highlight-color: transparent; /* iOS/Android Chrome */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+
+  /* por si algún estilo le agrega sombras */
+  box-shadow: none;
+}
+
+/* elimina el anillo azul de focus/active en Chrome */
+.cta:focus,
+.cta:focus-visible,
+.cta:active{
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* opcional: si querés que JAMÁS reciba focus (cuidado accesibilidad) */
+.cta{
+  -webkit-appearance: none;
+  appearance: none;
+}
     .confetti{
       position: fixed;
       inset: 0;
@@ -452,6 +487,7 @@ function playLeverAnimation({ fps = 60, holdLastMs = 50, returnTo1 = true } = {}
 </body>
 
 </html>
+
 
 
 
